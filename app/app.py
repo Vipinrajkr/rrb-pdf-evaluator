@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for WordPress integration
+CORS(app)
 
 UPLOAD_FOLDER = "uploads"
 RESULTS_CSV = "results.csv"
@@ -15,7 +15,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route('/')
 def index():
-    return render_template('index.html')  # optional UI
+    return render_template('index.html')
 
 @app.route('/evaluate', methods=['POST'])
 def evaluate():
@@ -26,17 +26,16 @@ def evaluate():
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(file_path)
 
+    # Get full text for metadata
     with fitz.open(file_path) as doc:
-        text = ""
-        for page in doc:
-            text += page.get_text()
+        full_text = "\n".join([page.get_text() for page in doc])
 
     # Extract candidate metadata
-    name = re.search(r"Candidate Name\s+(.*)", text)
-    community = re.search(r"Community\s+(.*)", text)
-    center = re.search(r"Test Center Name\s+(.*)", text)
-    test_date = re.search(r"Test Date\s+(.*)", text)
-    test_time = re.search(r"Test Time\s+(.*)", text)
+    name = re.search(r"Candidate Name\s+(.*)", full_text)
+    community = re.search(r"Community\s+(.*)", full_text)
+    center = re.search(r"Test Center Name\s+(.*)", full_text)
+    test_date = re.search(r"Test Date\s+(.*)", full_text)
+    test_time = re.search(r"Test Time\s+(.*)", full_text)
 
     name = name.group(1).strip() if name else "N/A"
     community = community.group(1).strip() if community else "N/A"
@@ -44,27 +43,68 @@ def evaluate():
     test_date = test_date.group(1).strip() if test_date else "N/A"
     test_time = test_time.group(1).strip() if test_time else "N/A"
 
-    # Scoring logic
+    # Split questions and initialize
+    question_blocks = full_text.split("Q.")
     correct = wrong = unattempted = 0
-    question_blocks = text.split("Q.")
+    q_index = 0
 
-    for block in question_blocks:
-        status_match = re.search(r"Status\s*:\s*(.*?)\n", block)
-        chosen_match = re.search(r"Chosen Option\s*:\s*(\d)", block)
-        correct_match = re.search(r"✓\s*Option\s*(\d)", block)
+    with fitz.open(file_path) as doc:
+        for block in question_blocks:
+            if not block.strip():
+                continue
 
-        status = status_match.group(1).strip() if status_match else "Not Answered"
-        chosen_option = chosen_match.group(1).strip() if chosen_match else None
-        correct_option = correct_match.group(1).strip() if correct_match else None
+            # Extract status and chosen option
+            status_match = re.search(r"Status\s*:\s*(.*?)\n", block)
+            chosen_match = re.search(r"Chosen Option\s*:\s*(\d)", block)
 
-        if status.lower() != "answered" or not chosen_option:
-            unattempted += 1
-            continue
+            status = status_match.group(1).strip() if status_match else "Not Answered"
+            chosen_option = chosen_match.group(1).strip() if chosen_match else None
 
-        if correct_option and chosen_option == correct_option:
-            correct += 1
-        else:
-            wrong += 1
+            if status.lower() != "answered" or not chosen_option:
+                unattempted += 1
+                q_index += 1
+                continue
+
+            # Look for green-colored option inside this specific question block
+            correct_option = None
+            found_q = False
+
+            for page in doc:
+                blocks = page.get_text("dict")["blocks"]
+                for b in blocks:
+                    if "lines" not in b:
+                        continue
+                    for l in b["lines"]:
+                        for s in l["spans"]:
+                            if f"Q.{q_index + 1}" in s["text"]:
+                                found_q = True
+                            if not found_q:
+                                continue
+                            color = s.get("color", 0)
+                            text = s["text"]
+                            if color in [32768, 65280] and "Option" in text:
+                                match = re.search(r"Option\s*(\d)", text)
+                                if match:
+                                    correct_option = match.group(1)
+                                    found_q = False
+                                    break
+                        if correct_option:
+                            break
+                    if correct_option:
+                        break
+                if correct_option:
+                    break
+
+            q_index += 1
+
+            if not correct_option:
+                wrong += 1
+                continue
+
+            if chosen_option == correct_option:
+                correct += 1
+            else:
+                wrong += 1
 
     total_answered = correct + wrong
     final_mark = round(correct * 1 - wrong * 0.3, 2)
@@ -89,6 +129,5 @@ def evaluate():
         "score": final_mark
     })
 
-# Run on Render-compatible settings
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
