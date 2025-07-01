@@ -26,7 +26,6 @@ def evaluate():
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(file_path)
 
-    # Get full text for metadata
     with fitz.open(file_path) as doc:
         full_text = "\n".join([page.get_text() for page in doc])
 
@@ -43,7 +42,6 @@ def evaluate():
     test_date = test_date.group(1).strip() if test_date else "N/A"
     test_time = test_time.group(1).strip() if test_time else "N/A"
 
-    # Split questions and initialize
     question_blocks = full_text.split("Q.")
     correct = wrong = unattempted = 0
     q_index = 0
@@ -53,7 +51,6 @@ def evaluate():
             if not block.strip():
                 continue
 
-            # Extract status and chosen option
             status_match = re.search(r"Status\s*:\s*(.*?)\n", block)
             chosen_match = re.search(r"Chosen Option\s*:\s*(\d)", block)
 
@@ -65,9 +62,9 @@ def evaluate():
                 q_index += 1
                 continue
 
-            # Look for green-colored option inside this specific question block
             correct_option = None
-            found_q = False
+            question_found = False
+            question_label = f"Q.{q_index + 1}"
 
             for page in doc:
                 blocks = page.get_text("dict")["blocks"]
@@ -76,17 +73,18 @@ def evaluate():
                         continue
                     for l in b["lines"]:
                         for s in l["spans"]:
-                            if f"Q.{q_index + 1}" in s["text"]:
-                                found_q = True
-                            if not found_q:
+                            if question_label in s["text"]:
+                                question_found = True
+                            if not question_found:
                                 continue
                             color = s.get("color", 0)
                             text = s["text"]
-                            if color in [32768, 65280] and "Option" in text:
-                                match = re.search(r"Option\s*(\d)", text)
+                            # Match "1. Windows 95", "2. Linux", etc.
+                            if color in [32768, 65280]:  # green shades
+                                match = re.match(r"(\d)\.\s", text)
                                 if match:
                                     correct_option = match.group(1)
-                                    found_q = False
+                                    question_found = False
                                     break
                         if correct_option:
                             break
@@ -109,7 +107,6 @@ def evaluate():
     total_answered = correct + wrong
     final_mark = round(correct * 1 - wrong * 0.3, 2)
 
-    # Save result to CSV
     with open(RESULTS_CSV, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
