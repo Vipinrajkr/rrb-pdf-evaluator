@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RRB PDF Evaluator</title>
+</head>
+<body>
+  <h2>RRB PDF Marks Evaluator</h2>
+  <form id="evalForm" enctype="multipart/form-data">
+    <label>Upload PDF:</label>
+    <input type="file" name="pdf" accept=".pdf" required><br><br>
+
+    <label>Select Category:</label>
+    <select name="category" required>
+      <option value="">--Select--</option>
+      <option value="UR">UR</option>
+      <option value="OBC">OBC</option>
+      <option value="SC">SC</option>
+      <option value="ST">ST</option>
+      <option value="EWS">EWS</option>
+      <option value="Others">Others</option>
+    </select><br><br>
+
+    <label>Select Zone:</label>
+    <select name="zone" required>
+      {% for z in zones %}
+        <option value="{{ z }}">{{ z }}</option>
+      {% endfor %}
+    </select><br><br>
+
+    <button type="submit">Evaluate</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    document.getElementById("evalForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const res = await fetch("/evaluate", {
+        method: "POST",
+        body: form
+      });
+      const data = await res.json();
+      document.getElementById("result").innerHTML = `
+        <h3>Evaluation Result</h3>
+        <table border="1" cellpadding="5">
+          <tr><td><strong>Candidate Name</strong></td><td>${data.name}</td></tr>
+          <tr><td><strong>Community</strong></td><td>${data.community}</td></tr>
+          <tr><td><strong>Test Center</strong></td><td>${data.center}</td></tr>
+          <tr><td><strong>Test Date</strong></td><td>${data.test_date}</td></tr>
+          <tr><td><strong>Test Time</strong></td><td>${data.test_time}</td></tr>
+          <tr><td><strong>Total Answered</strong></td><td>${data.answered}</td></tr>
+          <tr><td><strong>Correct</strong></td><td>${data.correct}</td></tr>
+          <tr><td><strong>Wrong</strong></td><td>${data.wrong}</td></tr>
+          <tr><td><strong>Final Mark</strong></td><td>${data.score}</td></tr>
+        </table>
+      `;
+    };
+  </script>
+</body>
+</html>
