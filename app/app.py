@@ -46,26 +46,22 @@ def evaluate():
 
     # Extract answers and compute marks
     correct = wrong = unattempted = 0
-
     question_blocks = text.split("Q.")
+
     for block in question_blocks:
         status_match = re.search(r"Status\s*:\s*(.*?)\n", block)
-        chosen_match = re.search(r"Chosen Option\s*:\s*(.*?)\n", block)
-        correct_match = re.search(r"\✓\s*Option\s*(\d)", block)
+        chosen_match = re.search(r"Chosen Option\s*:\s*(\d)", block)
+        correct_match = re.search(r"✓\s*Option\s*(\d)", block)
 
-        if not status_match or not chosen_match:
-            continue
+        status = status_match.group(1).strip() if status_match else "Not Answered"
+        chosen_option = chosen_match.group(1) if chosen_match else None
+        correct_option = correct_match.group(1) if correct_match else None
 
-        status = status_match.group(1).strip()
-        chosen = chosen_match.group(1).strip()
-
-        if status.lower() != "answered" or chosen == "--":
+        if status.lower() != "answered" or not chosen_option:
             unattempted += 1
             continue
 
-        correct_option = correct_match.group(1) if correct_match else None
-
-        if chosen == correct_option:
+        if correct_option and chosen_option == correct_option:
             correct += 1
         else:
             wrong += 1
