@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS so frontend (like WordPress) can connect
+CORS(app)  # Enable CORS for WordPress integration
 
 UPLOAD_FOLDER = "uploads"
 RESULTS_CSV = "results.csv"
@@ -15,7 +15,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route('/')
 def index():
-    return render_template('index.html')  # Optional browser form
+    return render_template('index.html')  # optional UI
 
 @app.route('/evaluate', methods=['POST'])
 def evaluate():
@@ -31,7 +31,7 @@ def evaluate():
         for page in doc:
             text += page.get_text()
 
-    # Extract metadata
+    # Extract candidate metadata
     name = re.search(r"Candidate Name\s+(.*)", text)
     community = re.search(r"Community\s+(.*)", text)
     center = re.search(r"Test Center Name\s+(.*)", text)
@@ -44,7 +44,7 @@ def evaluate():
     test_date = test_date.group(1).strip() if test_date else "N/A"
     test_time = test_time.group(1).strip() if test_time else "N/A"
 
-    # Extract answers and compute marks
+    # Scoring logic
     correct = wrong = unattempted = 0
     question_blocks = text.split("Q.")
 
@@ -54,8 +54,8 @@ def evaluate():
         correct_match = re.search(r"✓\s*Option\s*(\d)", block)
 
         status = status_match.group(1).strip() if status_match else "Not Answered"
-        chosen_option = chosen_match.group(1) if chosen_match else None
-        correct_option = correct_match.group(1) if correct_match else None
+        chosen_option = chosen_match.group(1).strip() if chosen_match else None
+        correct_option = correct_match.group(1).strip() if correct_match else None
 
         if status.lower() != "answered" or not chosen_option:
             unattempted += 1
@@ -69,11 +69,13 @@ def evaluate():
     total_answered = correct + wrong
     final_mark = round(correct * 1 - wrong * 0.3, 2)
 
-    # Save to CSV
+    # Save result to CSV
     with open(RESULTS_CSV, "a", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([datetime.now(), name, community, center, test_date, test_time,
-                         category, zone, total_answered, correct, wrong, final_mark])
+        writer.writerow([
+            datetime.now(), name, community, center, test_date, test_time,
+            category, zone, total_answered, correct, wrong, final_mark
+        ])
 
     return jsonify({
         "name": name,
@@ -87,6 +89,6 @@ def evaluate():
         "score": final_mark
     })
 
-# Run the server on Render-compatible host/port
+# Run on Render-compatible settings
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
