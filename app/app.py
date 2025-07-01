@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, render_template
-app = Flask(__name__)
-CORS(app)
+from flask_cors import CORS
 import fitz  # PyMuPDF
 import csv
 import os
@@ -8,18 +7,15 @@ import re
 from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS so frontend (like WordPress) can connect
+
 UPLOAD_FOLDER = "uploads"
 RESULTS_CSV = "results.csv"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Simple RRB zone list for dropdown (can be expanded)
-RRB_ZONES = ["Ahmedabad", "Ajmer", "Allahabad", "Bangalore", "Bhopal", "Bhubaneswar", "Bilaspur", "Chandigarh",
-             "Chennai", "Gorakhpur", "Guwahati", "Jammu", "Kolkata", "Malda", "Mumbai", "Muzaffarpur", "Patna",
-             "Ranchi", "Secunderabad", "Siliguri", "Thiruvananthapuram"]
-
 @app.route('/')
 def index():
-    return render_template('index.html', zones=RRB_ZONES)
+    return render_template('index.html')  # Optional browser form
 
 @app.route('/evaluate', methods=['POST'])
 def evaluate():
@@ -48,25 +44,28 @@ def evaluate():
     test_date = test_date.group(1).strip() if test_date else "N/A"
     test_time = test_time.group(1).strip() if test_time else "N/A"
 
-    questions = re.findall(r'Q\.(\d+).*?Status\s*:\s*(.*?)\nChosen Option\s*:\s*(.*?)\n', text, re.DOTALL)
+    # Extract answers and compute marks
     correct = wrong = unattempted = 0
 
-    for match in re.finditer(r"Status\s*:\s*(.*?)\nChosen Option\s*:\s*(.*?)\n", text):
-        status = match.group(1).strip()
-        chosen = match.group(2).strip()
-        correct_line = text[match.start():match.end()+300]
-        correct_option = None
+    question_blocks = text.split("Q.")
+    for block in question_blocks:
+        status_match = re.search(r"Status\s*:\s*(.*?)\n", block)
+        chosen_match = re.search(r"Chosen Option\s*:\s*(.*?)\n", block)
+        correct_match = re.search(r"\✓\s*Option\s*(\d)", block)
 
-        # Extract correct option from text (basic version without colors/tick icons)
-        # A more robust version would require analyzing PDF blocks directly
+        if not status_match or not chosen_match:
+            continue
 
-        correct_match = re.search(r"\u2713\)?\s*Option\s(\d)\s", correct_line)
-        if correct_match:
-            correct_option = correct_match.group(1)
+        status = status_match.group(1).strip()
+        chosen = chosen_match.group(1).strip()
 
         if status.lower() != "answered" or chosen == "--":
             unattempted += 1
-        elif correct_option == chosen:
+            continue
+
+        correct_option = correct_match.group(1) if correct_match else None
+
+        if chosen == correct_option:
             correct += 1
         else:
             wrong += 1
@@ -92,6 +91,6 @@ def evaluate():
         "score": final_mark
     })
 
+# Run the server on Render-compatible host/port
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-
