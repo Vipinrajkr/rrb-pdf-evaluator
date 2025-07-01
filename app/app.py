@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify, render_template
+app = Flask(__name__)
+CORS(app)
 import fitz  # PyMuPDF
 import csv
 import os
